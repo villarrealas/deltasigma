@@ -1,7 +1,7 @@
 import sys
 import yaml
 import numpy as np
-gio_path = '/homes/avillarreal/repositories/genericio/python'
+gio_path = '/global/cscratch1/sd/asv13/repos/genericio/python'
 _ = sys.path.insert(0, gio_path)
 import genericio
 import gc
