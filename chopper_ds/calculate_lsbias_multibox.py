@@ -69,7 +69,7 @@ def calculate_ls_bias(data, highp, lowcutoff, highcutoff, lbox, norm_method, cos
     error_high = [np.percentile(bootstraps[i,:], 84) for i in range(nbins)]
     return ls_bias, error_low, error_high
 
-file_path = '/cosmo/scratch/avillarreal/deltasigma/testdata_20bins_27nodes'
+file_path = '/global/cscratch1/sd/asv13/outputs/test_chopperds'
 
 # Leaving out M001 for now due to breaking Colossus
 list_models = ['M001']#, 'M002', 'M003', 'M004', 'M005', 'M006', 'M007', 'M008', 'M009']#, 'M010']

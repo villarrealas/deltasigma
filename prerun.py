@@ -4,8 +4,8 @@ import glob
 
 model = 'M001'
 h0 =  0.6167
-worklist = [ ['/cosmo/scratch/projects/MiraTitanU/Grid/{}/L2100/HACC000/analysis/'.format(model), 2100, 3200, h0] ]
-add_to_path_halos = 'Halos/M200/'
+worklist = [ ['/global/project/projectdirs/hacc/MiraTitan/{}/'.format(model), 2100, 3200, h0] ]
+add_to_path_halos = 'Halos/'
 add_to_path_particles = 'Particles/'
 newworklist = []
 
@@ -31,7 +31,7 @@ for workitem in worklist:
         stepchoice = os.path.basename(os.path.normpath(step_path))
         updated_particle_path = os.path.join(path_to_particles,stepchoice)
         particlebase = os.path.commonprefix(glob.glob(updated_particle_path+'/*.mpicosmo*'))
-        if int(step_num) > 475:
+        if int(step_num) > 1:
             newworklist.append([halobase, particlebase, workitem[1], workitem[2], workitem[3]])
 with open('{}_worklist.json'.format(model), 'w') as fp:
     json.dump(newworklist, fp)

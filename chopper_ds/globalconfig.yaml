@@ -15,6 +15,6 @@ computeinfo:
     numcores: 'max'
 
 outputinfo:
-    outfilebase: '/homes/avillarreal/data'
+    outfilebase: '/global/cscratch1/sd/asv13/outputs/test_chopperds'
 
 

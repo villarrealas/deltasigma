@@ -57,8 +57,8 @@ def load_data(halopath, ptclpath, boxsize, ptclcube, littleh, seednum):
     yamlpath = '/global/cscratch1/sd/asv13/repos/deltasigma/chopper_ds/globalconfig.yaml'
     with open(yamlpath) as fp: config=yaml.safe_load(fp)
     outfilebase = config['outputinfo']['outfilebase']
-    outfilestart = outfilebase+'/massenc_{}_{}_seed{}'.format(halopath.split('/')[6],
-                                                                        halopath.split('/')[12],
+    outfilestart = outfilebase+'/massenc_{}_{}_seed{}'.format(halopath.split('/')[-3],
+                                                                        halopath.split('/')[-1],
                                                                         seednum)
     # now we return all of this as two ordered dicts and a parameter set.
     return halocat, particles, [particlemass, downsample_factor, boxsize, outfilestart]
