@@ -5,9 +5,31 @@ gio_path = '/global/cscratch1/sd/asv13/repos/genericio/python'
 _ = sys.path.insert(0, gio_path)
 import genericio
 import gc
-from collections import OrderedDict
 import psutil
 import os
+
+def load_data_halos(halopath, littleh):
+    halocat = dict()
+    halocat['x'] = (genericio.read(halopath, 'sod_halo_mean_x')/littleh).astype('float32')
+    halocat['y'] = (genericio.read(halopath, 'sod_halo_mean_y')/littleh).astype('float32')
+    halocat['z'] = (genericio.read(halopath, 'sod_halo_mean_z')/littleh).astype('float32')
+    nptcl_halo = genericio.read(halopath, 'sod_halo_count')
+    halocat['mass'] = genericio.read(halopath, 'sod_halo_mass')/littleh
+    halocat['cnfw'] = genericio.read(halopath, 'sod_halo_cdelta').astype('float32')
+    particlemass = np.average(halocat['mass'] / nptcl_halo)
+    del nptcl_halo
+    gc.collect()
+    return halocat, particlemass
+
+def load_data_ptcls(ptclpath, littleh):
+    particles = dict()
+    particles['x'] = (genericio.read(ptclpath, 'x')[0]/littleh).astype('float32')
+    gc.collect()
+    particles['y'] = (genericio.read(ptclpath, 'y')[0]/littleh).astype('float32')
+    gc.collect()
+    particles['z'] = (genericio.read(ptclpath, 'z')[0]/littleh).astype('float32')
+    gc.collect()
+    return particles
 
 def load_data(halopath, ptclpath, boxsize, ptclcube, littleh, seednum):
     nptcl_full = ptclcube**3
