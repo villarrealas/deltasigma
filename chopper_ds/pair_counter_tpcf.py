@@ -3,7 +3,7 @@ import numpy as np
 import psutil
 import os
 import gc
-from halotools.mock_observables import mean_delta_sigma
+from halotools.mock_observables import tpcf
 from functools import partial
 
 def calculate_delta_sigma(halocat, particles, params, rank, rank_iter):
@@ -31,6 +31,20 @@ def calculate_delta_sigma(halocat, particles, params, rank, rank_iter):
     lbox = params[2]
     outfilebase = params[3]
 
+    # quick fix for tpcf which moves it into the box in a kludgy fashion...
+    if np.max(halocat['x']) > lbox/2:
+        halocat['x'] = halocat['x'] - lbox/2
+    if np.max(halocat['y']) > lbox/2:
+        halocat['y'] = halocat['y'] - lbox/2
+    if np.max(halocat['z']) > lbox/2:
+        halocat['z'] = halocat['z'] - lbox/2
+    if np.max(particles['x']) > lbox/2:
+        particles['x'] = particles['x'] - lbox/2
+    if np.max(particles['y']) > lbox/2:
+        particles['y'] = particles['y'] - lbox/2
+    if np.max(particles['z']) > lbox/2:
+        particles['z'] = particles['z'] - lbox/2
+
     # and here we are going to use halotools to do a per object mean delta sigma
     # calculation
     halos = np.vstack((halocat['x'], halocat['y'], halocat['z'])).T.astype('float32')
@@ -46,34 +60,9 @@ def calculate_delta_sigma(halocat, particles, params, rank, rank_iter):
         print('too big: ', np.max(ptcls))
 
     print('reporting {} GB used before first ds.'.format(process.memory_info().rss/1024./1024./1024.))
-    result = mean_delta_sigma(halos, ptcls, particlemass*downsample_factor,
-                              rbins, period=None, num_threads=ncores,
-                              per_object=True).astype('float32') 
+    result = tpcf(halos, rbins, sample2=ptcls, period=lbox/2, do_cross=False, num_threads=ncores).astype('float32')
     print('reporting {} GB used after first ds.'.format(process.memory_info().rss/1024./1024./1024.))
     gc.collect()
-    if(rank==0):
-        print(result)
-    # repeat two more times to average
-    halos = np.vstack((halocat['x'], halocat['z'], halocat['y'])).T.astype('float32')
-    ptcls = np.vstack((np.mod(particles['x'],lbox), 
-                       np.mod(particles['z'],lbox),
-                       np.mod(particles['y'],lbox))).T.astype('float32')
-    print('reporting {} GB used before second ds.'.format(process.memory_info().rss/1024./1024./1024.))
-    result = result + mean_delta_sigma(halos, ptcls, particlemass*downsample_factor,
-                                       rbins, period=lbox, num_threads=ncores,
-                                       per_object=True).astype('float32')
-    print('reporting {} GB used after second ds.'.format(process.memory_info().rss/1024./1024./1024.))
-
-    halos = np.vstack((halocat['z'], halocat['y'], halocat['x'])).T.astype('float32')
-    ptcls = np.vstack((np.mod(particles['z'],lbox), 
-                       np.mod(particles['y'],lbox),
-                       np.mod(particles['x'],lbox))).T.astype('float32')
-    result = result + mean_delta_sigma(halos, ptcls, particlemass*downsample_factor,
-                                       rbins, period=lbox, num_threads=ncores,
-                                       per_object=True).astype('float32')
-
-    # and average
-    result = result / 3.
 
     result = result.tolist()
     augmentedlist = []

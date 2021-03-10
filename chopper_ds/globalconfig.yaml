@@ -8,11 +8,11 @@ setupinfo:
     lbox: 2100
 
 analysiscuts:
-    logmass_lowcut: 13.
+    logmass_lowcut: 14.
     logmass_highcut: 16.
 
 computeinfo:
-    numcores: 'max'
+    numcores: 1
 
 outputinfo:
     outfilebase: '/global/cscratch1/sd/asv13/outputs/test_chopperds'

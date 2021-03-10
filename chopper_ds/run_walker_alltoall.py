@@ -1,15 +1,17 @@
-import pair_counter as pc
+import pair_counter_tpcf as pc
 import data_handler as dh
 import numpy as np
-from thechopper import get_data_for_rank
+from thechopper.data_chopper import get_data_for_rank
 import yaml
 import sys
+import glob
 import json
 from mpi4py import MPI
 import psutil
 import os
 import gc
 from datetime import datetime
+import pickle
 
 # This script runs
 if __name__ == '__main__':
@@ -31,9 +33,11 @@ if __name__ == '__main__':
     NX = config['setupinfo']['nx']
     NY = config['setupinfo']['ny']
     NZ = config['setupinfo']['nz']
-    RMAX = np.log(config['setupinfo']['rbin_loghigh'])
+    RMAX = 10**config['setupinfo']['rbin_loghigh']
     LBOX = config['setupinfo']['lbox']
     outfilebase = config['outputinfo']['outfilebase']
+
+    ts_format = "%H:%M:%S"
 
     # so what we need here is a loop. First we read the worklist on everything.
     # worklist of json format: contains both file locations + cosmology information
@@ -42,14 +46,23 @@ if __name__ == '__main__':
 
     # Then, we loop over the worklist. Each element is a model AND snap to work on.
     for work in worklist:
+        comm.Barrier()
+        print('rank {} synced for {}'.format(rank, work[0]))
+        outfilestart = outfilebase+'/massenc_{}_{}'.format(
+                           work[0].split('/')[-3], work[0].split('/')[-1])   
+        look_for_outputs = glob.glob(outfilestart+'*')
+        if look_for_outputs:
+            if rank == 0:
+                print('found existing outputs')
+            continue
         # grab a few of these parrarmeters for ease
         boxsize = work[2]
         ptclcube = work[3]
         littleh = work[4] 
 
         # first every rank erads the list of files and sorts it
-        halo_files = sorted(glob.glob(work[0]+'#'))
-        particle_files = sorted(glob.glob(work[1]+'#'))
+        halo_files = sorted(glob.glob(work[0]+'#*'))
+        particle_files = sorted(glob.glob(work[1]+'#*'))
         # determine which rank reads which files
         halofile_split = len(halo_files) / size
         my_low_halofile = rank*halofile_split
@@ -62,6 +75,9 @@ if __name__ == '__main__':
         # first halos
         master_halo = dict()
         split_counter = 0
+
+        now = datetime.now()
+        print('rank {} reading halos at {}.'.format(rank, now.strftime(ts_format)))
         for halo_file in halo_files:
             if (my_high_halofile > split_counter >= my_low_halofile):
                 halo_data, ptclmass = dh.load_data_halos(halo_file, littleh)
@@ -77,20 +93,24 @@ if __name__ == '__main__':
                         master_halo[key] = halo_data[key]
             split_counter += 1
         del halo_data
-        gc.collect()        
-
+        gc.collect()
+        # let's count and compare halos read in for safety
+        num_halos_on_rank = len(master_halo['x'])
+        num_halos_across = comm.allgather(num_halos_on_rank)
+        now = datetime.now()
+        print('rank {} reading particles at {}'.format(rank, now.strftime(ts_format)))
         # now particles
         master_ptcl = dict()
         split_counter = 0
-        for ptcl_file in ptcl_files:
+        for ptcl_file in particle_files:
             if (my_high_ptclfile > split_counter >= my_low_ptclfile):
                 ptcl_data = dh.load_data_ptcls(ptcl_file, littleh)
-            if master_ptcl.keys()
-                for key in master_ptcl.keys():
-                    master_ptcl[key] = np.append(master_ptcl[key], ptcl_data[key])
-            else:
-                for key in ptcl_data.keys():
-                    master_ptcl[key] = ptcl_data[key]
+                if master_ptcl.keys():
+                    for key in master_ptcl.keys():
+                        master_ptcl[key] = np.append(master_ptcl[key], ptcl_data[key])
+                else:
+                    for key in ptcl_data.keys():
+                        master_ptcl[key] = ptcl_data[key]
             split_counter+=1
         del ptcl_data
         gc.collect() 
@@ -105,17 +125,36 @@ if __name__ == '__main__':
         outfilestart = outfilebase+'/massenc_{}_{}'.format(
                            work[0].split('/')[-3], work[0].split('/')[-1])   
         params = [ptclmass, downsample_factor, boxsize, outfilestart]
-
+        now = datetime.now()
+        print('rank {} chopping halos at {}'.format(rank, now.strftime(ts_format)))
         # now we do the new chopper broadcasting
         halocats_for_rank = get_data_for_rank(comm, master_halo, NX, NY, NZ, LBOX, 0)
+        # and count halos after chop for comparison purposes
+        num_halos_after_chop_for_rank = 0
+        for halo_subvol_id, halo_subvol_data in halocats_for_rank.items():
+            halocat = halocats_for_rank[halo_subvol_id]
+            mask = halocat['_inside_subvol'] == True
+            for halo_key in halocat.keys():
+                halocat[halo_key] = halocat[halo_key][mask]
+            num_halos_after_chop_for_rank += len(halocat['x'])
+        num_halos_after_chop_across = comm.allgather(num_halos_after_chop_for_rank)
+        if rank == 0:
+            print('halos before ({}) and after ({})'.format(np.sum(num_halos_across), 
+                np.sum(num_halos_after_chop_across)))
+        now = datetime.now()
+        print('rank {} chopping particles at {}'.format(rank, now.strftime(ts_format)))
         particles_for_rank = get_data_for_rank(comm, master_ptcl, NX, NY, NZ, LBOX, RMAX)
-
+        now = datetime.now()
+        print('rank {} done with precalc at {}'.format(rank, now.strftime(ts_format)))
         # clean up duplicates
         del master_halo
         del master_ptcl
         gc.collect()
         rank_iter = 0
         # and now we'll loop over these
+        now = datetime.now()
+        print('rank {} starting evaluations at {}'.format(rank, now.strftime(ts_format)))
+        print('rank {} reporting memory use at {} GB at start of evaluations'.format(rank, process.memory_info().rss/1024./1024./1024.))
         for halo_subvol_id, halo_subvol_data in halocats_for_rank.items():
             halocat = halocats_for_rank[halo_subvol_id]
             mask = halocat['_inside_subvol'] == True
@@ -124,8 +163,16 @@ if __name__ == '__main__':
                 halocat[halo_key] = halocat[halo_key][mask]
             try:
                 particles = particles_for_rank[halo_subvol_id]
+                if rank == 0:
+                    if rank_iter == 0:
+                        pickle.dump(halocats_for_rank, open('/global/cscratch1/sd/asv13/repos/deltasigma/halocat.p', 'wb'))
+                        pickle.dump(particles_for_rank, open('/global/cscratch1/sd/asv13/repos/deltasigma/particles.p', 'wb'))
+                        pickle.dump(params, open('/global/cscratch1/sd/asv13/repos/deltasigma/params.p', 'wb'))
                 pc.calculate_delta_sigma(halocat, particles, params, rank, rank_iter)
                 rank_iter = rank_iter + 1
+                now = datetime.now()
+                print('rank {} completed calc {} at {}'.format(rank, rank_iter, now.strftime(ts_format)))
             except KeyError:
                 print('no matching particle subvol found')
-    print('rank {} completed all work at {}. '.format(rank, now.strftime("%H:%M:%S")))
+            gc.collect()
+    print('rank {} completed all work at {}. '.format(rank, now.strftime(ts_format)))

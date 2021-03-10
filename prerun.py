@@ -2,8 +2,8 @@ import json
 import os
 import glob
 
-model = 'M001'
-h0 =  0.6167
+model = 'M010'
+h0 =  0.7833
 worklist = [ ['/global/project/projectdirs/hacc/MiraTitan/{}/'.format(model), 2100, 3200, h0] ]
 add_to_path_halos = 'Halos/'
 add_to_path_particles = 'Particles/'
