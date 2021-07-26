@@ -1,7 +1,9 @@
 setupinfo:
-    rbin_loglow: 1.4
+    #rbin_loglow: 1.4
+    rbin_loglow: 0.7
+    #rbin_loghigh: 2
     rbin_loghigh: 2
-    n_rbins: 20
+    n_rbins: 40
     nx: 2
     ny: 2
     nz: 2
@@ -12,9 +14,9 @@ analysiscuts:
     logmass_highcut: 16.
 
 computeinfo:
-    numcores: 1
+    numcores: 'max'
 
 outputinfo:
-    outfilebase: '/global/cscratch1/sd/asv13/outputs/test_chopperds'
+    outfilebase: '/homes/avillarreal/repositories/deltasigma'
 
 

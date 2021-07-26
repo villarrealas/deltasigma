@@ -3,7 +3,7 @@ import numpy as np
 import psutil
 import os
 import gc
-from halotools.mock_observables import tpcf
+from halotools.mock_observables import npairs_3d
 from functools import partial
 
 def calculate_delta_sigma(halocat, particles, params, rank, rank_iter):
@@ -12,7 +12,7 @@ def calculate_delta_sigma(halocat, particles, params, rank, rank_iter):
     """
     # read yaml to configure binning information
     process = psutil.Process(os.getpid())
-    yamlpath = '/global/cscratch1/sd/asv13/repos/deltasigma/chopper_ds/globalconfig.yaml'
+    yamlpath = '/homes/avillarreal/repositories/deltasigma/chopper_ds/globalconfig.yaml'
     with open(yamlpath) as fp: config=yaml.safe_load(fp)
     rbins_loglow = config['setupinfo']['rbin_loglow']
     rbins_loghigh = config['setupinfo']['rbin_loghigh']
@@ -31,52 +31,127 @@ def calculate_delta_sigma(halocat, particles, params, rank, rank_iter):
     lbox = params[2]
     outfilebase = params[3]
 
-    # quick fix for tpcf which moves it into the box in a kludgy fashion...
-    if np.max(halocat['x']) > lbox/2:
-        halocat['x'] = halocat['x'] - lbox/2
-    if np.max(halocat['y']) > lbox/2:
-        halocat['y'] = halocat['y'] - lbox/2
-    if np.max(halocat['z']) > lbox/2:
-        halocat['z'] = halocat['z'] - lbox/2
-    if np.max(particles['x']) > lbox/2:
-        particles['x'] = particles['x'] - lbox/2
-    if np.max(particles['y']) > lbox/2:
-        particles['y'] = particles['y'] - lbox/2
-    if np.max(particles['z']) > lbox/2:
-        particles['z'] = particles['z'] - lbox/2
+    #if rank == 0:
+         #np.save('particles_received.npy', particles)
+ 
+    # boost all positions by amount to avoid edge calculations
+    # this avoids a double counting error
 
-    # and here we are going to use halotools to do a per object mean delta sigma
-    # calculation
-    halos = np.vstack((halocat['x'], halocat['y'], halocat['z'])).T.astype('float32')
-    ptcls = np.vstack((np.mod(particles['x'],lbox), 
-                       np.mod(particles['y'],lbox),
-                       np.mod(particles['z'],lbox))).T.astype('float32')
+    in_subvol_halo = halocat['_inside_subvol']
+    halos = np.vstack((halocat['x']+rp_max, halocat['y']+rp_max, halocat['z']+rp_max)).T
+    halos_subvol = np.vstack((halocat['x'][in_subvol_halo]+rp_max, halocat['y'][in_subvol_halo]+rp_max,
+                          halocat['z'][in_subvol_halo]+rp_max)).T
 
-    test_small = np.sum([np.sum([x<0 for x in ptcl]) for ptcl in ptcls])
-    if(test_small > 0):
-        print('too small: ', np.min(ptcls))
-    test_big = np.sum([np.sum([x>lbox  for x in ptcl]) for ptcl in ptcls])
-    if(test_big > 0):
-        print('too big: ', np.max(ptcls))
+    in_subvol_ptcl = particles['_inside_subvol']
+    ptcls = np.vstack((particles['x']+rp_max, particles['y']+rp_max, particles['z']+rp_max)).T
+    ptcls_subvol = np.vstack((particles['x'][in_subvol_ptcl]+rp_max, particles['y'][in_subvol_ptcl]+rp_max,
+                          particles['z'][in_subvol_ptcl]+rp_max)).T
 
-    print('reporting {} GB used before first ds.'.format(process.memory_info().rss/1024./1024./1024.))
-    result = tpcf(halos, rbins, sample2=ptcls, period=lbox/2, do_cross=False, num_threads=ncores).astype('float32')
-    print('reporting {} GB used after first ds.'.format(process.memory_info().rss/1024./1024./1024.))
+    # generate random points of different number density
+    nrand_multiply = 3
+
+    len_halos = len(halocat['x'])
+    len_halos_r = len_halos*nrand_multiply
+
+    x_halos_r = np.random.uniform( np.min(halocat['x'])+rp_max, np.max(halocat['x'])+rp_max, len_halos_r)
+    y_halos_r = np.random.uniform( np.min(halocat['y'])+rp_max, np.max(halocat['y'])+rp_max, len_halos_r)
+    z_halos_r = np.random.uniform( np.min(halocat['z'])+rp_max, np.max(halocat['z'])+rp_max, len_halos_r)
+    halos_r = np.vstack((x_halos_r, y_halos_r, z_halos_r)).T
+    del x_halos_r, y_halos_r, z_halos_r
     gc.collect()
 
-    result = result.tolist()
-    augmentedlist = []
-    for i in range(0,len(result)):
-        item=[]
-        item.append(halocat['mass'][i])
-        item.append(halocat['cnfw'][i])
-        item.append(halocat['x'][i])
-        item.append(halocat['y'][i])
-        item.append(halocat['z'][i])
-        for bincount in result[i]:
-            item.append(bincount)
-        augmentedlist.append(item)
-    outfilepath = outfilebase + '_{}_{}.txt'.format(rank, rank_iter) 
-    with open(outfilepath, 'w') as fp:
-        np.savetxt(fp, np.array(augmentedlist))
-    return
+    len_halos_subv = len(halocat['x'][in_subvol_halo])
+    len_halos_subv_r = len_halos_subv * nrand_multiply
+
+    x_halos_r = np.random.uniform( np.min(halocat['x'][in_subvol_halo])+rp_max,
+				np.max(halocat['x'][in_subvol_halo])+rp_max, len_halos_subv_r)
+    y_halos_r = np.random.uniform( np.min(halocat['y'][in_subvol_halo])+rp_max,
+				np.max(halocat['y'][in_subvol_halo])+rp_max, len_halos_subv_r)
+    z_halos_r = np.random.uniform( np.min(halocat['z'][in_subvol_halo])+rp_max,
+				np.max(halocat['z'][in_subvol_halo])+rp_max, len_halos_subv_r)
+    halos_subvol_r = np.vstack((x_halos_r, y_halos_r, z_halos_r)).T
+    del x_halos_r, y_halos_r, z_halos_r
+    gc.collect()
+
+    len_ptcls = len(particles['x'])
+    len_ptcls_r = len_ptcls * nrand_multiply
+    x_ptcls_r = np.random.uniform( np.min(particles['x'])+rp_max, np.max(particles['x'])+rp_max, len_ptcls_r)
+    y_ptcls_r = np.random.uniform( np.min(particles['y'])+rp_max, np.max(particles['y'])+rp_max, len_ptcls_r)
+    z_ptcls_r = np.random.uniform( np.min(particles['z'])+rp_max, np.max(particles['z'])+rp_max, len_ptcls_r)
+    ptcls_r = np.vstack((x_ptcls_r, y_ptcls_r, z_ptcls_r)).T
+    del x_ptcls_r, y_ptcls_r, z_ptcls_r
+    gc.collect()
+
+    len_ptcls_subv = len(particles['x'][in_subvol_ptcl])
+    len_ptcls_subv_r = len_ptcls_subv*nrand_multiply
+    x_ptcls_r = np.random.uniform( np.min(particles['x'][in_subvol_ptcl])+rp_max,
+				np.max(particles['x'][in_subvol_ptcl])+rp_max, len_ptcls_subv_r)
+    y_ptcls_r = np.random.uniform( np.min(particles['y'][in_subvol_ptcl])+rp_max,
+				np.max(particles['y'][in_subvol_ptcl])+rp_max, len_ptcls_subv_r)
+    z_ptcls_r = np.random.uniform( np.min(particles['z'][in_subvol_ptcl])+rp_max,
+				np.max(particles['z'][in_subvol_ptcl])+rp_max, len_ptcls_subv_r)
+    ptcls_subvol_r = np.vstack((x_ptcls_r, y_ptcls_r, z_ptcls_r)).T
+    del x_ptcls_r, y_ptcls_r, z_ptcls_r
+    gc.collect()
+
+    # calculate pair counts for each pairing of objects / randoms needed for
+    # correlation functions
+    upper_lim = np.max(ptcls[:,0])+5 # upper limit for boosted box
+
+    # first halos!
+    hh_pairs_dd = np.diff(npairs_3d(halos_subvol, halos, rbins, period=upper_lim)) / \
+        (len_halos_subv * (len_halos - 1))
+    hh_pairs_dr = np.diff(npairs_3d(halos_subvol, halos_r, rbins, period=upper_lim)) / \
+        (len_halos_subv * len_halos_r)
+    hh_pairs_rr = np.diff(npairs_3d(halos_subvol_r, halos_r, rbins, period=upper_lim)) / \
+        (len_halos_subv_r * (len_halos_r - 1))
+
+    # and then particles!
+    pp_pairs_dd = np.diff(npairs_3d(ptcls_subvol, ptcls, rbins, period=upper_lim)) / \
+        (len_ptcls_subv * (len_ptcls - 1))
+    pp_pairs_dr = np.diff(npairs_3d(ptcls_subvol, ptcls_r, rbins, period=upper_lim)) / \
+        (len_ptcls_subv * len_ptcls_r)
+    pp_pairs_rr = np.diff(npairs_3d(ptcls_subvol_r, ptcls_r, rbins, period=upper_lim)) / \
+        (len_ptcls_subv_r * (len_ptcls_r - 1))
+
+    # and we'll also need some cross correlation functions
+    hp_pairs_dd = np.diff(npairs_3d(halos_subvol, ptcls, rbins, period=upper_lim)) / \
+        (len_halos_subv * (len_ptcls - 1))
+    hp_pairs_dr = np.diff(npairs_3d(halos_subvol, ptcls_r, rbins, period=upper_lim)) / \
+        (len_halos_subv * len_ptcls_r)
+    hp_pairs_rd = np.diff(npairs_3d(halos_subvol_r, ptcls, rbins, period=upper_lim)) / \
+        (len_halos_subv_r * len_ptcls)
+    hp_pairs_rr = np.diff(npairs_3d(halos_subvol_r, ptcls_r, rbins, period=upper_lim)) / \
+        (len_halos_subv_r * (len_ptcls_r - 1))
+
+    # and the cross check
+    ph_pairs_dd = np.diff(npairs_3d(ptcls_subvol, halos, rbins, period=upper_lim)) / \
+        (len_ptcls_subv * (len_halos - 1))
+    ph_pairs_dr = np.diff(npairs_3d(ptcls_subvol, halos_r, rbins, period=upper_lim)) / \
+        (len_ptcls_subv * len_halos_r)
+    ph_pairs_rd = np.diff(npairs_3d(ptcls_subvol_r, halos, rbins, period=upper_lim)) / \
+        (len_ptcls_subv_r * len_halos)
+    ph_pairs_rr = np.diff(npairs_3d(ptcls_subvol_r, halos_r, rbins, period=upper_lim)) / \
+        (len_ptcls_subv_r * (len_halos_r -1))
+
+    # calculate auto correlation functions
+    xi_hh_ls = (hh_pairs_dd - 2*hh_pairs_dr + hh_pairs_rr) / hh_pairs_rr
+    xi_pp_ls = (pp_pairs_dd - 2*pp_pairs_dr + pp_pairs_rr) / pp_pairs_rr
+
+    # calculate cross correlation function
+    xi_hp_ls = (hp_pairs_dd - hp_pairs_dr - hp_pairs_rd + hp_pairs_rr) / hp_pairs_rr
+    xi_ph_ls = (ph_pairs_dd - ph_pairs_dr - ph_pairs_rd + ph_pairs_rr) / ph_pairs_rr
+    gc.collect()
+
+    # save outputs as a numpy array
+    rbins_mids = (rbins[1:]+rbins[:-1])/2
+    augmentedarray = np.array((rbins_mids, xi_hh_ls, xi_pp_ls, xi_hp_ls, xi_ph_ls))
+    np.save('output_{}_{}.npy'.format(rank, rank_iter), augmentedarray)
+
+    # but what if I do this more correctly now?
+    xi_hh_ls_components = np.array((hh_pairs_dd, hh_pairs_dr, hh_pairs_rr))
+    xi_pp_ls_components = np.array((pp_pairs_dd, pp_pairs_dr, pp_pairs_rr))
+    xi_hp_ls_components = np.array((hp_pairs_dd, hp_pairs_dr, hp_pairs_rd, hp_pairs_rr))
+    xi_ph_ls_components = np.array((ph_pairs_dd, ph_pairs_dr, ph_pairs_rd, ph_pairs_rr))
+
+    return xi_hh_ls_components, xi_pp_ls_components, xi_hp_ls_components, xi_ph_ls_components

@@ -19,14 +19,15 @@ if __name__ == '__main__':
     rank = comm.Get_rank()
     size = comm.Get_size()
     myhost = MPI.Get_processor_name()
-
+    # check how many processors we have
+    print('we have {} cpus on {}'.format(psutil.cpu_count(),myhost))
     process = psutil.Process(os.getpid())
     # hardcoded here for ease of changing
     seednum = int(sys.argv[1])
     fp_worklist = sys.argv[2]
 
     # read in some important stuff from the yaml file
-    yamlpath = '/global/cscratch1/sd/asv13/repos/deltasigma/chopper_ds/globalconfig.yaml'
+    yamlpath = '/homes/avillarreal/repositories/deltasigma/chopper_ds/globalconfig.yaml'
     with open(yamlpath) as fp: config=yaml.safe_load(fp)
     logmass_lowcut = config['analysiscuts']['logmass_lowcut']
     logmass_highcut = config['analysiscuts']['logmass_highcut']
@@ -47,8 +48,8 @@ if __name__ == '__main__':
     # Then, we loop over the worklist. Each element is a model AND snap to work on.
     for work in worklist:
         comm.Barrier()
-        print('rank {} synced for {}'.format(rank, work[0]))
-        outfilestart = outfilebase+'/massenc_{}_{}'.format(
+        #print('rank {} synced for {}'.format(rank, work[0]))
+        outfilestart = outfilebase+'/tpcf_{}_{}'.format(
                            work[0].split('/')[-3], work[0].split('/')[-1])   
         look_for_outputs = glob.glob(outfilestart+'*')
         if look_for_outputs:
@@ -63,6 +64,7 @@ if __name__ == '__main__':
         # first every rank erads the list of files and sorts it
         halo_files = sorted(glob.glob(work[0]+'#*'))
         particle_files = sorted(glob.glob(work[1]+'#*'))
+
         # determine which rank reads which files
         halofile_split = len(halo_files) / size
         my_low_halofile = rank*halofile_split
@@ -78,6 +80,8 @@ if __name__ == '__main__':
 
         now = datetime.now()
         print('rank {} reading halos at {}.'.format(rank, now.strftime(ts_format)))
+
+        print(halo_files)
         for halo_file in halo_files:
             if (my_high_halofile > split_counter >= my_low_halofile):
                 halo_data, ptclmass = dh.load_data_halos(halo_file, littleh)
@@ -128,23 +132,20 @@ if __name__ == '__main__':
         now = datetime.now()
         print('rank {} chopping halos at {}'.format(rank, now.strftime(ts_format)))
         # now we do the new chopper broadcasting
-        halocats_for_rank = get_data_for_rank(comm, master_halo, NX, NY, NZ, LBOX, 0)
+        halocats_for_rank = get_data_for_rank(comm, master_halo, NX, NY, NZ, LBOX, RMAX)
         # and count halos after chop for comparison purposes
         num_halos_after_chop_for_rank = 0
         for halo_subvol_id, halo_subvol_data in halocats_for_rank.items():
             halocat = halocats_for_rank[halo_subvol_id]
-            mask = halocat['_inside_subvol'] == True
-            for halo_key in halocat.keys():
-                halocat[halo_key] = halocat[halo_key][mask]
-            num_halos_after_chop_for_rank += len(halocat['x'])
-        num_halos_after_chop_across = comm.allgather(num_halos_after_chop_for_rank)
+        now = datetime.now()
+        #print('rank {} chopping {} particles at {}'.format(rank, len(master_ptcl['x']), now.strftime(ts_format)))
         if rank == 0:
-            print('halos before ({}) and after ({})'.format(np.sum(num_halos_across), 
-                np.sum(num_halos_after_chop_across)))
-        now = datetime.now()
-        print('rank {} chopping particles at {}'.format(rank, now.strftime(ts_format)))
+            np.save('particles_before.npy', master_ptcl)
         particles_for_rank = get_data_for_rank(comm, master_ptcl, NX, NY, NZ, LBOX, RMAX)
+        if rank == 0:
+            np.save('particles_after.npy', particles_for_rank)
         now = datetime.now()
+        #print('rank {} chopped {} particles at {}'.format(rank, (particles_for_rank), now.strftime(ts_format)))
         print('rank {} done with precalc at {}'.format(rank, now.strftime(ts_format)))
         # clean up duplicates
         del master_halo
@@ -154,25 +155,68 @@ if __name__ == '__main__':
         # and now we'll loop over these
         now = datetime.now()
         print('rank {} starting evaluations at {}'.format(rank, now.strftime(ts_format)))
-        print('rank {} reporting memory use at {} GB at start of evaluations'.format(rank, process.memory_info().rss/1024./1024./1024.))
+        #print('rank {} reporting memory use at {} GB at start of evaluations'.format(rank, process.memory_info().rss/1024./1024./1024.))
         for halo_subvol_id, halo_subvol_data in halocats_for_rank.items():
             halocat = halocats_for_rank[halo_subvol_id]
-            mask = halocat['_inside_subvol'] == True
-            # modify halo catalog to only include that inside subvolume
-            for halo_key in halocat.keys():
-                halocat[halo_key] = halocat[halo_key][mask]
             try:
                 particles = particles_for_rank[halo_subvol_id]
-                if rank == 0:
-                    if rank_iter == 0:
-                        pickle.dump(halocats_for_rank, open('/global/cscratch1/sd/asv13/repos/deltasigma/halocat.p', 'wb'))
-                        pickle.dump(particles_for_rank, open('/global/cscratch1/sd/asv13/repos/deltasigma/particles.p', 'wb'))
-                        pickle.dump(params, open('/global/cscratch1/sd/asv13/repos/deltasigma/params.p', 'wb'))
-                pc.calculate_delta_sigma(halocat, particles, params, rank, rank_iter)
+                # small change here. We're now collecting arrays.
+                hh_stuff, pp_stuff, hp_stuff, ph_stuff = pc.calculate_delta_sigma(halocat, particles, params, rank, rank_iter)
                 rank_iter = rank_iter + 1
                 now = datetime.now()
-                print('rank {} completed calc {} at {}'.format(rank, rank_iter, now.strftime(ts_format)))
             except KeyError:
                 print('no matching particle subvol found')
             gc.collect()
-    print('rank {} completed all work at {}. '.format(rank, now.strftime(ts_format)))
+    now = datetime.now()
+    # small change here: we're now 
+    print('rank {} completed all pair counts at {}. '.format(rank, now.strftime(ts_format)))
+    # now we'll need to gather all of those stuff.
+    comm.Barrier()
+    hh_gather = np.array(comm.gather(hh_stuff, root=0))
+    pp_gather = np.array(comm.gather(pp_stuff, root=0))
+    ph_gather = np.array(comm.gather(ph_stuff, root=0))
+    hp_gather = np.array(comm.gather(hp_stuff, root=0))
+
+    if rank == 0:
+        # first we gather all the halo statistics and calculate xi
+        hh_gather = np.array(hh_gather)
+        hh_gather_dd = np.sum(np.array(hh_gather[:,0]),axis=0)
+        hh_gather_dr = np.sum(np.array(hh_gather[:,1]),axis=0)
+        hh_gather_rr = np.sum(np.array(hh_gather[:,2]),axis=0)
+
+        xi_hh = (hh_gather_dd - 2*hh_gather_dr + hh_gather_rr) / hh_gather_rr
+
+        # ditto for the cross correlation
+
+        hp_gather = np.array(hp_gather)
+        hp_gather_dd = np.sum(np.array(hp_gather[:,0]),axis=0)
+        hp_gather_dr = np.sum(np.array(hp_gather[:,1]),axis=0)
+        hp_gather_rd = np.sum(np.array(hp_gather[:,2]),axis=0)
+        hp_gather_rr = np.sum(np.array(hp_gather[:,3]),axis=0)
+
+        xi_hp = (hp_gather_dd - hp_gather_dr - hp_gather_rd + hp_gather_rr)/hp_gather_rr
+
+        ph_gather = np.array(ph_gather)
+        ph_gather_dd = np.sum(np.array(ph_gather[:,0]),axis=0)
+        ph_gather_dr = np.sum(np.array(ph_gather[:,1]),axis=0)
+        ph_gather_rd = np.sum(np.array(ph_gather[:,2]),axis=0)
+        ph_gather_rr = np.sum(np.array(ph_gather[:,3]),axis=0)
+
+        xi_ph = (ph_gather_dd - ph_gather_dr - ph_gather_rd + ph_gather_rr)/ph_gather_rr
+ 
+        # and the matter autocorrelation
+
+        pp_gather = np.array(pp_gather)
+        pp_gather_dd = np.sum(np.array(pp_gather[:,0]),axis=0)
+        pp_gather_dr = np.sum(np.array(pp_gather[:,1]),axis=0)
+        pp_gather_rr = np.sum(np.array(pp_gather[:,2]),axis=0)
+
+        xi_pp = (pp_gather_dd - 2*pp_gather_dr + pp_gather_rr)/pp_gather_rr
+
+        print('halo-halo tpcf is {}'.format(xi_hh))
+        print('halo-matter tpcf is {}'.format(xi_hp))
+        print('matter-halo tpcf is {}'.format(xi_ph))
+        print('diff between the two {}'.format(xi_hp - xi_ph))
+        print('matter-matter tpcf is {}'.format(xi_pp))
+
+        np.save('{}.npy'.format(outfilestart), np.array((xi_hh, xi_hp, xi_ph, xi_pp)))

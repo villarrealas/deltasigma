@@ -1,19 +1,13 @@
 #!/bin/bash
-#SBATCH --account=hacc
-#SBATCH --qos=regular
-#SBATCH --constraint=knl
 #SBATCH --time=48:00:00
 #SBATCH --nodes=8
 #SBATCH --tasks-per-node=1
-#SBATCH --cpus-per-task=272
 #SBATCH --job-name=deltasigma
-#SBATCH --output=M001-smol-%j.out
+#SBATCH --output=M010-%j.out
 
-cd /global/cscratch1/sd/asv13/
-source /global/homes/a/asv13/miniconda3/bin/activate chopperds
+cd /homes/avillarreal/repositories/deltasigma
+source /homes/avillarreal/miniconda3/bin/activate chopper_calc
 
-export OMP_PROC_BIND=true
-export OMP_PLACES=threads
-export OMP_NUM_THREADS=68
+export PATH=/cosmo_tortoise/software/opt/spack/linux-centos7-x86_64/gcc-4.8.5/mpich-3.2.1-wbys3nhdqoqhlv55u2oos7kn7k7ghjbs/bin:$PATH
 
-srun python -u /global/cscratch1/sd/asv13/repos/deltasigma/chopper_ds/run_walker_alltoall.py 0 '/global/cscratch1/sd/asv13/repos/deltasigma/M001_worklist_smol.json'
+mpiexec python -u /homes/avillarreal/repositories/deltasigma/chopper_ds/run_walker_alltoall.py 0 '/homes/avillarreal/repositories/deltasigma/M010_worklist.json'

@@ -1,7 +1,7 @@
 import sys
 import yaml
 import numpy as np
-gio_path = '/global/cscratch1/sd/asv13/repos/genericio/python'
+gio_path = '/homes/avillarreal/repositories/genericio/python'
 _ = sys.path.insert(0, gio_path)
 import genericio
 import gc
@@ -29,6 +29,23 @@ def load_data_ptcls(ptclpath, littleh):
     gc.collect()
     particles['z'] = (genericio.read(ptclpath, 'z')[0]/littleh).astype('float32')
     gc.collect()
+
+    nptcl = len(particles['x'])
+    #print('old nptcl is {}'.format(nptcl), flush=True)
+    downsample_fraction = 0.01
+    downsample_test = np.random.uniform(0,1,nptcl)
+    downsample_mask = downsample_test <= downsample_fraction
+
+    particles['x'] = np.array(particles['x'])[downsample_mask]
+    gc.collect()
+    particles['y'] = np.array(particles['y'])[downsample_mask]
+    gc.collect()
+    particles['z'] = np.array(particles['z'])[downsample_mask]
+    gc.collect()
+    nptcl = len(particles['x'])
+    gc.collect()
+    #print('new nptcl is {}'.format(nptcl), flush=True)
+
     return particles
 
 def load_data(halopath, ptclpath, boxsize, ptclcube, littleh, seednum):
@@ -47,10 +64,24 @@ def load_data(halopath, ptclpath, boxsize, ptclcube, littleh, seednum):
     gc.collect()
     print('rank 0 reporting used memory: {} GB'.format(process.memory_info().rss/1024./1024./1024.), flush=True) 
     nptcl = len(particles['x'])
+
+    #print('old nptcl is {}'.format(nptcl), flush=True)
+    # particle downsampling routine
+    downsample_fraction = 1.1
+    downsample_test = np.random.uniform(0,1,nptcl)
+    downsample_mask = downsample_test <= downsample_fraction
+
+    particles['x'] = np.array(particles['x'])[downsample_mask]
     gc.collect()
-    print('nptcl is {}'.format(nptcl), flush=True)
+    particles['y'] = np.array(particles['y'])[downsample_mask]
+    gc.collect()
+    particles['z'] = np.array(particles['z'])[downsample_mask]
+    gc.collect()
+    nptcl = len(particles['x'])
+    gc.collect()
+    #print('new nptcl is {}'.format(nptcl), flush=True)
     downsample_factor = nptcl_full / nptcl
-    print('read particles. Moving onto halos', flush=True)
+    #print('read particles. Moving onto halos', flush=True)
 
     # read halos into ordered dict
     halocat = OrderedDict()
@@ -75,8 +106,7 @@ def load_data(halopath, ptclpath, boxsize, ptclcube, littleh, seednum):
     #particles['z'] = np.mod(particles['z'], boxsize)
 
     gc.collect()
-
-    yamlpath = '/global/cscratch1/sd/asv13/repos/deltasigma/chopper_ds/globalconfig.yaml'
+    yamlpath = '/homes/avillarreal/repositories/deltasigma/chopper_ds/globalconfig.yaml'
     with open(yamlpath) as fp: config=yaml.safe_load(fp)
     outfilebase = config['outputinfo']['outfilebase']
     outfilestart = outfilebase+'/npairs_{}_{}_seed{}'.format(halopath.split('/')[-3],
