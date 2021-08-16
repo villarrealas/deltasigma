@@ -12,7 +12,7 @@ def calculate_delta_sigma(halocat, particles, params, rank, rank_iter):
     """
     # read yaml to configure binning information
     process = psutil.Process(os.getpid())
-    yamlpath = '/global/cscratch1/sd/asv13/repos/deltasigma/chopper_ds/globalconfig.yaml'
+    yamlpath = '/homes/avillarreal/repositories/deltasigma/chopper_ds/globalconfig.yaml'
     with open(yamlpath) as fp: config=yaml.safe_load(fp)
     rbins_loglow = config['setupinfo']['rbin_loglow']
     rbins_loghigh = config['setupinfo']['rbin_loghigh']
