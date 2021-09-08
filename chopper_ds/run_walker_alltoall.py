@@ -1,4 +1,4 @@
-import pair_counter_tpcf as pc
+import pair_counter_master as pc
 import data_handler as dh
 import numpy as np
 from thechopper.data_chopper import get_data_for_rank
@@ -13,6 +13,17 @@ import gc
 from datetime import datetime
 import pickle
 
+def repack_array(input_array, rank):
+    '''quick helper function to repackage gathered arrays'''
+    if rank == 0:
+        input_out = input_array[0]
+        input_extend = input_array[1:]
+        for input_arr in input_extend:
+            input_out = np.append(input_out, input_arr, 0)
+    else:
+        input_out = None
+    return input_out
+
 # This script runs
 if __name__ == '__main__':
     comm = MPI.COMM_WORLD
@@ -25,6 +36,10 @@ if __name__ == '__main__':
     # hardcoded here for ease of changing
     seednum = int(sys.argv[1])
     fp_worklist = sys.argv[2]
+    ptcl_flag = sys.argv[3]
+    if ptcl_flag != 'halos' and ptcl_flag != 'ptcls' and ptcl_flag != 'both':
+        print('error')
+        sys.exit()
 
     # read in some important stuff from the yaml file
     yamlpath = '/homes/avillarreal/repositories/deltasigma/chopper_ds/globalconfig.yaml'
@@ -48,9 +63,9 @@ if __name__ == '__main__':
     # Then, we loop over the worklist. Each element is a model AND snap to work on.
     for work in worklist:
         comm.Barrier()
-        #print('rank {} synced for {}'.format(rank, work[0]))
-        outfilestart = outfilebase+'/tpcf_{}_{}'.format(
-                           work[0].split('/')[-3], work[0].split('/')[-1])   
+        print(work[0].split('/'))
+        outfilestart = outfilebase+'/outputs_{}'.format(
+                           work[0].split('/')[6])   
         look_for_outputs = glob.glob(outfilestart+'*')
         if look_for_outputs:
             if rank == 0:
@@ -81,7 +96,7 @@ if __name__ == '__main__':
         now = datetime.now()
         print('rank {} reading halos at {}.'.format(rank, now.strftime(ts_format)))
 
-        print(halo_files)
+        #print(halo_files)
         for halo_file in halo_files:
             if (my_high_halofile > split_counter >= my_low_halofile):
                 halo_data, ptclmass = dh.load_data_halos(halo_file, littleh)
@@ -104,30 +119,34 @@ if __name__ == '__main__':
         now = datetime.now()
         print('rank {} reading particles at {}'.format(rank, now.strftime(ts_format)))
         # now particles
-        master_ptcl = dict()
-        split_counter = 0
-        for ptcl_file in particle_files:
-            if (my_high_ptclfile > split_counter >= my_low_ptclfile):
-                ptcl_data = dh.load_data_ptcls(ptcl_file, littleh)
-                if master_ptcl.keys():
-                    for key in master_ptcl.keys():
-                        master_ptcl[key] = np.append(master_ptcl[key], ptcl_data[key])
-                else:
-                    for key in ptcl_data.keys():
-                        master_ptcl[key] = ptcl_data[key]
-            split_counter+=1
-        del ptcl_data
+        if ptcl_flag == 'Halos':
+            master_ptcl = None
+        else:
+            master_ptcl = dict()
+            split_counter = 0
+            for ptcl_file in particle_files:
+                if (my_high_ptclfile > split_counter >= my_low_ptclfile):
+                    ptcl_data = dh.load_data_ptcls(ptcl_file, littleh)
+                    if master_ptcl.keys():
+                        for key in master_ptcl.keys():
+                            master_ptcl[key] = np.append(master_ptcl[key], ptcl_data[key])
+                    else:
+                        for key in ptcl_data.keys():
+                            master_ptcl[key] = ptcl_data[key]
+                split_counter+=1
+            del ptcl_data
         gc.collect() 
 
         # we will need the params for the calculation, so let's sort those out now
         # to get downsample factor, we do need to collect number of ptcls
-        nptcls_on_rank = len(master_ptcl['x'])
-        nptcls_read = np.sum(comm.allgather(nptcls_on_rank))
-        downsample_factor = ptclcube**3 / nptcls_read
 
-        # to set outfile name, we do the following:
-        outfilestart = outfilebase+'/massenc_{}_{}'.format(
-                           work[0].split('/')[-3], work[0].split('/')[-1])   
+        if ptcl_flag != 'Halos':
+            nptcls_on_rank = len(master_ptcl['x'])
+            nptcls_read = np.sum(comm.allgather(nptcls_on_rank))
+            downsample_factor = ptclcube**3 / nptcls_read
+        else:
+            downsample_factor = 0
+
         params = [ptclmass, downsample_factor, boxsize, outfilestart]
         now = datetime.now()
         print('rank {} chopping halos at {}'.format(rank, now.strftime(ts_format)))
@@ -137,16 +156,12 @@ if __name__ == '__main__':
         num_halos_after_chop_for_rank = 0
         for halo_subvol_id, halo_subvol_data in halocats_for_rank.items():
             halocat = halocats_for_rank[halo_subvol_id]
-        now = datetime.now()
-        #print('rank {} chopping {} particles at {}'.format(rank, len(master_ptcl['x']), now.strftime(ts_format)))
-        if rank == 0:
-            np.save('particles_before.npy', master_ptcl)
-        particles_for_rank = get_data_for_rank(comm, master_ptcl, NX, NY, NZ, LBOX, RMAX)
-        if rank == 0:
-            np.save('particles_after.npy', particles_for_rank)
-        now = datetime.now()
-        #print('rank {} chopped {} particles at {}'.format(rank, (particles_for_rank), now.strftime(ts_format)))
-        print('rank {} done with precalc at {}'.format(rank, now.strftime(ts_format)))
+        if ptcl_flag == 'Halos':
+            particles_for_rank = None
+        else:
+            particles_for_rank = get_data_for_rank(comm, master_ptcl, NX, NY, NZ, LBOX, RMAX)
+            now = datetime.now()
+            print('rank {} chopped {} particles at {}'.format(rank, len(particles_for_rank), now.strftime(ts_format)))
         # clean up duplicates
         del master_halo
         del master_ptcl
@@ -155,68 +170,71 @@ if __name__ == '__main__':
         # and now we'll loop over these
         now = datetime.now()
         print('rank {} starting evaluations at {}'.format(rank, now.strftime(ts_format)))
-        #print('rank {} reporting memory use at {} GB at start of evaluations'.format(rank, process.memory_info().rss/1024./1024./1024.))
         for halo_subvol_id, halo_subvol_data in halocats_for_rank.items():
             halocat = halocats_for_rank[halo_subvol_id]
             try:
-                particles = particles_for_rank[halo_subvol_id]
-                # small change here. We're now collecting arrays.
-                hh_stuff, pp_stuff, hp_stuff, ph_stuff = pc.calculate_delta_sigma(halocat, particles, params, rank, rank_iter)
+                if ptcl_flag != 'ptcls':
+                    hh_pairs_dd, hh_pairs_dr, hh_pairs_rr, hh_pairs_dd_hc, hh_pairs_dr_hc, hh_pairs_rr_hc, \
+                        hh_pairs_dd_lc, hh_pairs_dr_lc, hh_pairs_rr_lc, len_halos, len_halos_subv, \
+                        len_halos_r, len_halos_subv_r = \
+                        pc.calculate_halohalo(halocat, params, rank, rank_iter)
+
+                if ptcl_flag != 'halos':
+                    now = datetime.now()
+                    print('rank {} starting ptcl evaluations at {}'.format(rank, now.strftime(ts_format)))
+                    particles = particles_for_rank[halo_subvol_id]
+                    pp_pairs_dd, pp_pairs_dr, pp_pairs_rr, hp_pairs_dd, hp_pairs_dr, hp_pairs_rd, hp_pairs_rr, \
+                        len_ptcls, len_ptcls_subv, len_ptcls_r, len_ptcls_subv_r, \
+                        halos_subvol_mass, halos_subvol_cnfw, deltasigma = \
+                        pc.calculate_haloptcl(halocat, particles, params, rank, rank_iter)
+
                 rank_iter = rank_iter + 1
                 now = datetime.now()
             except KeyError:
-                print('no matching particle subvol found')
+                print('no work found')
             gc.collect()
     now = datetime.now()
     # small change here: we're now 
     print('rank {} completed all pair counts at {}. '.format(rank, now.strftime(ts_format)))
     # now we'll need to gather all of those stuff.
     comm.Barrier()
-    hh_gather = np.array(comm.gather(hh_stuff, root=0))
-    pp_gather = np.array(comm.gather(pp_stuff, root=0))
-    ph_gather = np.array(comm.gather(ph_stuff, root=0))
-    hp_gather = np.array(comm.gather(hp_stuff, root=0))
+    if ptcl_flag != 'ptcls':
+        hh_pairs_dd = np.sum(repack_array(comm.gather(hh_pairs_dd, root=0),rank),axis=0)
+        hh_pairs_dr = np.sum(repack_array(comm.gather(hh_pairs_dr, root=0),rank),axis=0)
+        hh_pairs_rr = np.sum(repack_array(comm.gather(hh_pairs_rr, root=0),rank),axis=0)
+        hh_pairs_dd_hc = np.sum(repack_array(comm.gather(hh_pairs_dd_hc, root=0),rank),axis=0)
+        hh_pairs_dr_hc = np.sum(repack_array(comm.gather(hh_pairs_dr_hc, root=0),rank),axis=0)
+        hh_pairs_rr_hc = np.sum(repack_array(comm.gather(hh_pairs_rr_hc, root=0),rank),axis=0)
+        hh_pairs_dd_lc = np.sum(repack_array(comm.gather(hh_pairs_dd_lc, root=0),rank),axis=0)
+        hh_pairs_dr_lc = np.sum(repack_array(comm.gather(hh_pairs_dr_lc, root=0),rank),axis=0)
+        hh_pairs_rr_lc = np.sum(repack_array(comm.gather(hh_pairs_rr_lc, root=0),rank),axis=0)
+        len_halos = np.sum(comm.gather(len_halos, root=0))
+        len_halos_subv = np.sum(comm.gather(len_halos_subv, root=0))
+        len_halos_r = np.sum(comm.gather(len_halos_r, root=0))
+        len_halos_subv_r = np.sum(comm.gather(len_halos_subv_r, root=0))
+        if rank == 0:
+            halo_array = np.array([hh_pairs_dd, hh_pairs_dr, hh_pairs_rr, hh_pairs_dd_hc, \
+                hh_pairs_dr_hc, hh_pairs_rr_hc, hh_pairs_dd_lc, hh_pairs_dr_lc, hh_pairs_rr_lc, \
+                len_halos, len_halos_subv, len_halos_r, len_halos_subv_r], dtype=object)
+            np.save('{}_{}to{}_halos.npy'.format(outfilestart, logmass_lowcut, logmass_highcut), halo_array)
 
-    if rank == 0:
-        # first we gather all the halo statistics and calculate xi
-        hh_gather = np.array(hh_gather)
-        hh_gather_dd = np.sum(np.array(hh_gather[:,0]),axis=0)
-        hh_gather_dr = np.sum(np.array(hh_gather[:,1]),axis=0)
-        hh_gather_rr = np.sum(np.array(hh_gather[:,2]),axis=0)
-
-        xi_hh = (hh_gather_dd - 2*hh_gather_dr + hh_gather_rr) / hh_gather_rr
-
-        # ditto for the cross correlation
-
-        hp_gather = np.array(hp_gather)
-        hp_gather_dd = np.sum(np.array(hp_gather[:,0]),axis=0)
-        hp_gather_dr = np.sum(np.array(hp_gather[:,1]),axis=0)
-        hp_gather_rd = np.sum(np.array(hp_gather[:,2]),axis=0)
-        hp_gather_rr = np.sum(np.array(hp_gather[:,3]),axis=0)
-
-        xi_hp = (hp_gather_dd - hp_gather_dr - hp_gather_rd + hp_gather_rr)/hp_gather_rr
-
-        ph_gather = np.array(ph_gather)
-        ph_gather_dd = np.sum(np.array(ph_gather[:,0]),axis=0)
-        ph_gather_dr = np.sum(np.array(ph_gather[:,1]),axis=0)
-        ph_gather_rd = np.sum(np.array(ph_gather[:,2]),axis=0)
-        ph_gather_rr = np.sum(np.array(ph_gather[:,3]),axis=0)
-
-        xi_ph = (ph_gather_dd - ph_gather_dr - ph_gather_rd + ph_gather_rr)/ph_gather_rr
- 
-        # and the matter autocorrelation
-
-        pp_gather = np.array(pp_gather)
-        pp_gather_dd = np.sum(np.array(pp_gather[:,0]),axis=0)
-        pp_gather_dr = np.sum(np.array(pp_gather[:,1]),axis=0)
-        pp_gather_rr = np.sum(np.array(pp_gather[:,2]),axis=0)
-
-        xi_pp = (pp_gather_dd - 2*pp_gather_dr + pp_gather_rr)/pp_gather_rr
-
-        print('halo-halo tpcf is {}'.format(xi_hh))
-        print('halo-matter tpcf is {}'.format(xi_hp))
-        print('matter-halo tpcf is {}'.format(xi_ph))
-        print('diff between the two {}'.format(xi_hp - xi_ph))
-        print('matter-matter tpcf is {}'.format(xi_pp))
-
-        np.save('{}.npy'.format(outfilestart), np.array((xi_hh, xi_hp, xi_ph, xi_pp)))
+    if ptcl_flag != 'halos':
+        halos_subvol_mass = repack_array(comm.gather(halos_subvol_mass, root=0), rank)
+        halos_subvol_cnfw = repack_array(comm.gather(halos_subvol_cnfw, root=0), rank)
+        pp_pairs_dd = np.sum(comm.gather(pp_pairs_dd, root=0),axis=0)
+        pp_pairs_dr = np.sum(comm.gather(pp_pairs_dr, root=0),axis=0)
+        pp_pairs_rr = np.sum(comm.gather(pp_pairs_rr, root=0),axis=0)
+        hp_pairs_dd = repack_array(comm.gather(hp_pairs_dd, root=0), rank)
+        hp_pairs_dr = repack_array(comm.gather(hp_pairs_dr, root=0), rank)
+        hp_pairs_rd = repack_array(comm.gather(hp_pairs_rd, root=0), rank)
+        hp_pairs_rr = repack_array(comm.gather(hp_pairs_rr, root=0), rank)
+        deltasigma = repack_array(comm.gather(deltasigma, root=0), rank)
+        len_ptcls = np.sum(comm.gather(len_ptcls, root=0))
+        len_ptcls_subv = np.sum(comm.gather(len_ptcls_subv, root=0))
+        len_ptcls_r = np.sum(comm.gather(len_ptcls_r, root=0))
+        len_ptcls_subv_r = np.sum(comm.gather(len_ptcls_subv_r, root=0))
+        if rank == 0:
+            ptcl_array = np.array([pp_pairs_dd, pp_pairs_dr, pp_pairs_rr, hp_pairs_dd, hp_pairs_dr, \
+                hp_pairs_rd, hp_pairs_rr, len_ptcls, len_ptcls_subv, len_ptcls_r, len_ptcls_subv_r, \
+                halos_subvol_mass, halos_subvol_cnfw, deltasigma], dtype=object)
+            np.save('{}_{}to{}_ptcls.npy'.format(outfilestart, logmass_lowcut, logmass_highcut), ptcl_array)
