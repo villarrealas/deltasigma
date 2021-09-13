@@ -2,13 +2,13 @@ import json
 import os
 import glob
 
-model = 'M010'
-h0 = 0.7833
+model = 'M004'
+h0 = 0.5833
 worklist = [ ['/cosmo/scratch/projects/MiraTitanU/Grid/{}/L2100/HACC000/analysis/'.format(model), 2100, 3200, h0] ]
 add_to_path_halos = 'Halos/M200/'
 add_to_path_particles = 'Particles/'
 newworklist = []
-dir_struct = 1 # handles different structures for how halos are sorted
+dir_struct = 0 # handles different structures for how halos are sorted
 
 for workitem in worklist:
     basepath = workitem[0]

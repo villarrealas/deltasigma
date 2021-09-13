@@ -40,12 +40,11 @@ if __name__ == '__main__':
     if ptcl_flag != 'halos' and ptcl_flag != 'ptcls' and ptcl_flag != 'both':
         print('error')
         sys.exit()
-
+    logmass_lowcut = float(sys.argv[4])
+    logmass_highcut = float(sys.argv[5])
     # read in some important stuff from the yaml file
     yamlpath = '/homes/avillarreal/repositories/deltasigma/chopper_ds/globalconfig.yaml'
     with open(yamlpath) as fp: config=yaml.safe_load(fp)
-    logmass_lowcut = config['analysiscuts']['logmass_lowcut']
-    logmass_highcut = config['analysiscuts']['logmass_highcut']
     NX = config['setupinfo']['nx']
     NY = config['setupinfo']['ny']
     NZ = config['setupinfo']['nz']
@@ -63,14 +62,8 @@ if __name__ == '__main__':
     # Then, we loop over the worklist. Each element is a model AND snap to work on.
     for work in worklist:
         comm.Barrier()
-        print(work[0].split('/'))
         outfilestart = outfilebase+'/outputs_{}'.format(
                            work[0].split('/')[6])   
-        look_for_outputs = glob.glob(outfilestart+'*')
-        if look_for_outputs:
-            if rank == 0:
-                print('found existing outputs')
-            continue
         # grab a few of these parrarmeters for ease
         boxsize = work[2]
         ptclcube = work[3]
@@ -95,8 +88,6 @@ if __name__ == '__main__':
 
         now = datetime.now()
         print('rank {} reading halos at {}.'.format(rank, now.strftime(ts_format)))
-
-        #print(halo_files)
         for halo_file in halo_files:
             if (my_high_halofile > split_counter >= my_low_halofile):
                 halo_data, ptclmass = dh.load_data_halos(halo_file, littleh)
@@ -119,7 +110,7 @@ if __name__ == '__main__':
         now = datetime.now()
         print('rank {} reading particles at {}'.format(rank, now.strftime(ts_format)))
         # now particles
-        if ptcl_flag == 'Halos':
+        if ptcl_flag == 'halos':
             master_ptcl = None
         else:
             master_ptcl = dict()
@@ -140,7 +131,7 @@ if __name__ == '__main__':
         # we will need the params for the calculation, so let's sort those out now
         # to get downsample factor, we do need to collect number of ptcls
 
-        if ptcl_flag != 'Halos':
+        if ptcl_flag != 'halos':
             nptcls_on_rank = len(master_ptcl['x'])
             nptcls_read = np.sum(comm.allgather(nptcls_on_rank))
             downsample_factor = ptclcube**3 / nptcls_read
@@ -156,12 +147,11 @@ if __name__ == '__main__':
         num_halos_after_chop_for_rank = 0
         for halo_subvol_id, halo_subvol_data in halocats_for_rank.items():
             halocat = halocats_for_rank[halo_subvol_id]
-        if ptcl_flag == 'Halos':
+        if ptcl_flag == 'halos':
             particles_for_rank = None
         else:
             particles_for_rank = get_data_for_rank(comm, master_ptcl, NX, NY, NZ, LBOX, RMAX)
             now = datetime.now()
-            print('rank {} chopped {} particles at {}'.format(rank, len(particles_for_rank), now.strftime(ts_format)))
         # clean up duplicates
         del master_halo
         del master_ptcl
@@ -190,6 +180,7 @@ if __name__ == '__main__':
 
                 rank_iter = rank_iter + 1
                 now = datetime.now()
+                print('evaluations for {} done at {}'.format(rank, now.strftime(ts_format)))
             except KeyError:
                 print('no work found')
             gc.collect()

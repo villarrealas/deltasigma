@@ -84,13 +84,13 @@ def calculate_halohalo(halocat, params, rank, rank_iter):
     # we will also probably want these results for low concnetration and high concentration samples
     halos_subvol_hc = halos_subvol[halos_subvol_cnfw >= np.percentile(halos_subvol_cnfw,80)]
     halos_hc = halos[halos_cnfw >= np.percentile(halos_subvol_cnfw,80)]
-    
     hh_pairs_dd_hc = np.diff(npairs_per_object_3d(halos_subvol_hc, halos_hc, rbins, period=None))
     hh_pairs_dr_hc = np.diff(npairs_per_object_3d(halos_subvol_hc, halos_r, rbins, period=None))
     hh_pairs_rr_hc = np.diff(npairs_per_object_3d(halos_subvol_r, halos_r, rbins, period=None))
 
     halos_subvol_lc = halos_subvol[halos_subvol_cnfw < np.percentile(halos_subvol_cnfw,20)]
     halos_lc = halos[halos_cnfw < np.percentile(halos_subvol_cnfw,20)]
+    temp = np.percentile(halos_subvol_cnfw,20)
 
     hh_pairs_dd_lc = np.diff(npairs_per_object_3d(halos_subvol_lc, halos_lc, rbins, period=None))
     hh_pairs_dr_lc = np.diff(npairs_per_object_3d(halos_subvol_lc, halos_r, rbins, period=None))
@@ -115,7 +115,6 @@ def calculate_haloptcl(halocat, particles, params, rank, rank_iter):
 
     # also grab numcores
     numcores = config['computeinfo']['numcores']
-    print('numcores is {}'.format(numcores))
     # set max length for buffering
     rp_max = np.max(rbins)
    
@@ -207,20 +206,19 @@ def calculate_haloptcl(halocat, particles, params, rank, rank_iter):
     # and let's do some quick moving around...
     halos_subvol = np.vstack((halos_subvol[:,0], halos_subvol[:,2], halos_subvol[:,1])).T
     ptcls = np.vstack((ptcls[:,0], ptcls[:,2], ptcls[:,1])).T
-
+    
     if rank == 0:
         print('first ds done')
     delta_sigma = delta_sigma + mean_delta_sigma(halos_subvol, ptcls, particlemass*downsample_factor,
         rbins, period=None, num_threads=numcores, per_object=True)
-
+    
     if rank == 0:
         print('second ds done')
     halos_subvol = np.vstack((halos_subvol[:,1], halos_subvol[:,2], halos_subvol[:,0])).T
     ptcls = np.vstack((ptcls[:,1], ptcls[:,2], ptcls[:,0])).T
-
+    
     delta_sigma = (delta_sigma + mean_delta_sigma(halos_subvol, ptcls, particlemass*downsample_factor,
         rbins, period=None, num_threads=numcores, per_object=True))/3
-
     return pp_pairs_dd, pp_pairs_dr, pp_pairs_rr, hp_pairs_dd, hp_pairs_dr, hp_pairs_rd, \
         hp_pairs_rr, len_ptcls, len_ptcls_subv, len_ptcls_r, len_ptcls_subv_r, \
         halos_subvol_mass, halos_subvol_cnfw, delta_sigma
