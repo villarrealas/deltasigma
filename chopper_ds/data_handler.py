@@ -32,7 +32,7 @@ def load_data_ptcls(ptclpath, littleh):
 
     nptcl = len(particles['x'])
     #print('old nptcl is {}'.format(nptcl), flush=True)
-    downsample_fraction = .01
+    downsample_fraction = .05
     downsample_test = np.random.uniform(0,1,nptcl)
     downsample_mask = downsample_test <= downsample_fraction
 

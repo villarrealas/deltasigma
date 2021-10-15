@@ -91,7 +91,7 @@ if __name__ == '__main__':
         for halo_file in halo_files:
             if (my_high_halofile > split_counter >= my_low_halofile):
                 halo_data, ptclmass = dh.load_data_halos(halo_file, littleh)
-                mask = (logmass_lowcut < np.log10(halo_data['mass'])) & (np.log10(halo_data['mass']) < logmass_highcut)
+                mask = (logmass_lowcut < np.log10(halo_data['mass'])) & (np.log10(halo_data['mass']) <= logmass_highcut)
                 for halo_key in halo_data.keys():
                     halo_data[halo_key] = halo_data[halo_key][mask]
                 # update a master dict with all this
@@ -159,22 +159,23 @@ if __name__ == '__main__':
         rank_iter = 0
         # and now we'll loop over these
         now = datetime.now()
+        #np.save('halocat_{}.npy'.format(rank), halocats_for_rank)
         print('rank {} starting evaluations at {}'.format(rank, now.strftime(ts_format)))
         for halo_subvol_id, halo_subvol_data in halocats_for_rank.items():
             halocat = halocats_for_rank[halo_subvol_id]
+            np.save('halocat_{}.npy'.format(rank), halocat)
             try:
                 if ptcl_flag != 'ptcls':
-                    hh_pairs_dd, hh_pairs_dr, hh_pairs_rr, hh_pairs_dd_hc, hh_pairs_dr_hc, hh_pairs_rr_hc, \
-                        hh_pairs_dd_lc, hh_pairs_dr_lc, hh_pairs_rr_lc, len_halos, len_halos_subv, \
-                        len_halos_r, len_halos_subv_r = \
+                    hh_pairs_dd, hh_pairs_dd_hc, \
+                        hh_pairs_dd_lc, len_halos, len_halos_subv = \
                         pc.calculate_halohalo(halocat, params, rank, rank_iter)
 
                 if ptcl_flag != 'halos':
                     now = datetime.now()
                     print('rank {} starting ptcl evaluations at {}'.format(rank, now.strftime(ts_format)))
                     particles = particles_for_rank[halo_subvol_id]
-                    pp_pairs_dd, pp_pairs_dr, pp_pairs_rr, hp_pairs_dd, hp_pairs_dr, hp_pairs_rd, hp_pairs_rr, \
-                        len_ptcls, len_ptcls_subv, len_ptcls_r, len_ptcls_subv_r, \
+                    pp_pairs_dd, hp_pairs_dd, \
+                        len_ptcls, len_ptcls_subv, \
                         halos_subvol_mass, halos_subvol_cnfw, deltasigma = \
                         pc.calculate_haloptcl(halocat, particles, params, rank, rank_iter)
 
@@ -191,41 +192,26 @@ if __name__ == '__main__':
     comm.Barrier()
     if ptcl_flag != 'ptcls':
         hh_pairs_dd = np.sum(repack_array(comm.gather(hh_pairs_dd, root=0),rank),axis=0)
-        hh_pairs_dr = np.sum(repack_array(comm.gather(hh_pairs_dr, root=0),rank),axis=0)
-        hh_pairs_rr = np.sum(repack_array(comm.gather(hh_pairs_rr, root=0),rank),axis=0)
         hh_pairs_dd_hc = np.sum(repack_array(comm.gather(hh_pairs_dd_hc, root=0),rank),axis=0)
-        hh_pairs_dr_hc = np.sum(repack_array(comm.gather(hh_pairs_dr_hc, root=0),rank),axis=0)
-        hh_pairs_rr_hc = np.sum(repack_array(comm.gather(hh_pairs_rr_hc, root=0),rank),axis=0)
         hh_pairs_dd_lc = np.sum(repack_array(comm.gather(hh_pairs_dd_lc, root=0),rank),axis=0)
-        hh_pairs_dr_lc = np.sum(repack_array(comm.gather(hh_pairs_dr_lc, root=0),rank),axis=0)
-        hh_pairs_rr_lc = np.sum(repack_array(comm.gather(hh_pairs_rr_lc, root=0),rank),axis=0)
         len_halos = np.sum(comm.gather(len_halos, root=0))
         len_halos_subv = np.sum(comm.gather(len_halos_subv, root=0))
-        len_halos_r = np.sum(comm.gather(len_halos_r, root=0))
-        len_halos_subv_r = np.sum(comm.gather(len_halos_subv_r, root=0))
         if rank == 0:
-            halo_array = np.array([hh_pairs_dd, hh_pairs_dr, hh_pairs_rr, hh_pairs_dd_hc, \
-                hh_pairs_dr_hc, hh_pairs_rr_hc, hh_pairs_dd_lc, hh_pairs_dr_lc, hh_pairs_rr_lc, \
-                len_halos, len_halos_subv, len_halos_r, len_halos_subv_r], dtype=object)
+            halo_array = np.array([hh_pairs_dd, hh_pairs_dd_hc, \
+                hh_pairs_dd_lc, \
+                len_halos, len_halos_subv], dtype=object)
             np.save('{}_{}to{}_halos.npy'.format(outfilestart, logmass_lowcut, logmass_highcut), halo_array)
 
     if ptcl_flag != 'halos':
         halos_subvol_mass = repack_array(comm.gather(halos_subvol_mass, root=0), rank)
         halos_subvol_cnfw = repack_array(comm.gather(halos_subvol_cnfw, root=0), rank)
         pp_pairs_dd = np.sum(comm.gather(pp_pairs_dd, root=0),axis=0)
-        pp_pairs_dr = np.sum(comm.gather(pp_pairs_dr, root=0),axis=0)
-        pp_pairs_rr = np.sum(comm.gather(pp_pairs_rr, root=0),axis=0)
         hp_pairs_dd = repack_array(comm.gather(hp_pairs_dd, root=0), rank)
-        hp_pairs_dr = repack_array(comm.gather(hp_pairs_dr, root=0), rank)
-        hp_pairs_rd = repack_array(comm.gather(hp_pairs_rd, root=0), rank)
-        hp_pairs_rr = repack_array(comm.gather(hp_pairs_rr, root=0), rank)
         deltasigma = repack_array(comm.gather(deltasigma, root=0), rank)
         len_ptcls = np.sum(comm.gather(len_ptcls, root=0))
         len_ptcls_subv = np.sum(comm.gather(len_ptcls_subv, root=0))
-        len_ptcls_r = np.sum(comm.gather(len_ptcls_r, root=0))
-        len_ptcls_subv_r = np.sum(comm.gather(len_ptcls_subv_r, root=0))
         if rank == 0:
-            ptcl_array = np.array([pp_pairs_dd, pp_pairs_dr, pp_pairs_rr, hp_pairs_dd, hp_pairs_dr, \
-                hp_pairs_rd, hp_pairs_rr, len_ptcls, len_ptcls_subv, len_ptcls_r, len_ptcls_subv_r, \
+            ptcl_array = np.array([pp_pairs_dd, hp_pairs_dd, \
+                len_ptcls, len_ptcls_subv, \
                 halos_subvol_mass, halos_subvol_cnfw, deltasigma], dtype=object)
             np.save('{}_{}to{}_ptcls.npy'.format(outfilestart, logmass_lowcut, logmass_highcut), ptcl_array)

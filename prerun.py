@@ -2,8 +2,8 @@ import json
 import os
 import glob
 
-model = 'M004'
-h0 = 0.5833
+model = 'M005'
+h0 = 0.8500
 worklist = [ ['/cosmo/scratch/projects/MiraTitanU/Grid/{}/L2100/HACC000/analysis/'.format(model), 2100, 3200, h0] ]
 add_to_path_halos = 'Halos/M200/'
 add_to_path_particles = 'Particles/'
