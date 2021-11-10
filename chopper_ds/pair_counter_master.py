@@ -53,25 +53,24 @@ def calculate_halohalo(halocat, params, rank, rank_iter):
     # correlation functions
     np.save('halo_concs', halos_subvol_cnfw)
     #first halos
-    hh_pairs_dd = np.diff(npairs_per_object_3d(halos_subvol, halos, rbins, period=None))
+    hh_pairs_dd = np.diff(npairs_3d(halos_subvol, halos, rbins, period=None))
 
     if rank == 0:
-        np.save('hh_pairs_rank.npy', [hh_pairs_dd,hh_pairs_dr,hh_pairs_rr, len_halos, len_halos_subv,
-            len_halos_r, len_halos_subv_r])
+        np.save('hh_pairs_rank.npy', [hh_pairs_dd, len_halos, len_halos_subv,
+            ])
 
     # we will also probably want these results for low concnetration and high concentration samples
     halos_subvol_hc = halos_subvol[halos_subvol_cnfw > np.percentile(halos_subvol_cnfw,80)]
     halos_hc = halos[halos_cnfw > np.percentile(halos_subvol_cnfw,80)]
-    hh_pairs_dd_hc = np.diff(npairs_per_object_3d(halos_subvol_hc, halos_hc, rbins, period=None))
+    hh_pairs_dd_hc = np.diff(npairs_3d(halos_subvol_hc, halos_hc, rbins, period=None))
 
     halos_subvol_lc = halos_subvol[halos_subvol_cnfw <= np.percentile(halos_subvol_cnfw,20)]
     halos_lc = halos[halos_cnfw <= np.percentile(halos_subvol_cnfw,20)]
 
-    hh_pairs_dd_lc = np.diff(npairs_per_object_3d(halos_subvol_lc, halos_lc, rbins, period=None))
+    hh_pairs_dd_lc = np.diff(npairs_3d(halos_subvol_lc, halos_lc, rbins, period=None))
 
     return hh_pairs_dd, hh_pairs_dd_hc, \
-        hh_pairs_dd_lc, len_halos, len_halos_subv, \
-        len_halos_r, len_halos_subv_r
+        hh_pairs_dd_lc, len_halos, len_halos_subv
 
 def calculate_haloptcl(halocat, particles, params, rank, rank_iter):
     """
@@ -114,6 +113,7 @@ def calculate_haloptcl(halocat, particles, params, rank, rank_iter):
     len_halos = len(halocat['x'])
     len_halos_subv = len(halocat['x'][in_subvol_halo])
     len_ptcls = len(particles['x'])
+    len_ptcls_subv = len(particles['x'][in_subvol_ptcl])
 
     # calculate pair counts for each pairing of objects / randoms needed for
     # correlation functions

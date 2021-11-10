@@ -191,11 +191,18 @@ if __name__ == '__main__':
     # now we'll need to gather all of those stuff.
     comm.Barrier()
     if ptcl_flag != 'ptcls':
-        hh_pairs_dd = np.sum(repack_array(comm.gather(hh_pairs_dd, root=0),rank),axis=0)
-        hh_pairs_dd_hc = np.sum(repack_array(comm.gather(hh_pairs_dd_hc, root=0),rank),axis=0)
-        hh_pairs_dd_lc = np.sum(repack_array(comm.gather(hh_pairs_dd_lc, root=0),rank),axis=0)
-        len_halos = np.sum(comm.gather(len_halos, root=0))
-        len_halos_subv = np.sum(comm.gather(len_halos_subv, root=0))
+        #hh_pairs_dd = np.sum(comm.gather(hh_pairs_dd, root=0),axis=0)
+        #hh_pairs_dd_hc = np.sum(comm.gather(hh_pairs_dd_hc, root=0),axis=0)
+        #hh_pairs_dd_lc = np.sum(comm.gather(hh_pairs_dd_lc, root=0),axis=0)
+        #len_halos = np.sum(comm.gather(len_halos, root=0))
+        #len_halos_subv = np.sum(comm.gather(len_halos_subv, root=0))
+
+        # attempting to preserve more information for downstream error calculation
+        hh_pairs_dd = comm.gather(hh_pairs_dd, root=0)
+        hh_pairs_dd_hc = comm.gather(hh_pairs_dd_hc, root=0)
+        hh_pairs_dd_lc = comm.gather(hh_pairs_dd_lc, root=0)
+        len_halos = comm.gather(len_halos, root=0)
+        len_halos_subv = comm.gather(len_halos_subv, root=0)
         if rank == 0:
             halo_array = np.array([hh_pairs_dd, hh_pairs_dd_hc, \
                 hh_pairs_dd_lc, \
@@ -203,13 +210,22 @@ if __name__ == '__main__':
             np.save('{}_{}to{}_halos.npy'.format(outfilestart, logmass_lowcut, logmass_highcut), halo_array)
 
     if ptcl_flag != 'halos':
-        halos_subvol_mass = repack_array(comm.gather(halos_subvol_mass, root=0), rank)
-        halos_subvol_cnfw = repack_array(comm.gather(halos_subvol_cnfw, root=0), rank)
-        pp_pairs_dd = np.sum(comm.gather(pp_pairs_dd, root=0),axis=0)
-        hp_pairs_dd = repack_array(comm.gather(hp_pairs_dd, root=0), rank)
-        deltasigma = repack_array(comm.gather(deltasigma, root=0), rank)
-        len_ptcls = np.sum(comm.gather(len_ptcls, root=0))
-        len_ptcls_subv = np.sum(comm.gather(len_ptcls_subv, root=0))
+        #halos_subvol_mass = repack_array(comm.gather(halos_subvol_mass, root=0), rank)
+        #halos_subvol_cnfw = repack_array(comm.gather(halos_subvol_cnfw, root=0), rank)
+        #pp_pairs_dd = np.sum(comm.gather(pp_pairs_dd, root=0),axis=0)
+        #hp_pairs_dd = repack_array(comm.gather(hp_pairs_dd, root=0), rank)
+        #deltasigma = repack_array(comm.gather(deltasigma, root=0), rank)
+        #len_ptcls = np.sum(comm.gather(len_ptcls, root=0))
+        #len_ptcls_subv = np.sum(comm.gather(len_ptcls_subv, root=0))
+        # same jam for the ptcl section
+        halos_subvol_mass = comm.gather(halos_subvol_mass, root=0)
+        halos_subvol_cnfw = comm.gather(halos_subvol_cnfw, root=0)
+        pp_pairs_dd = comm.gather(pp_pairs_dd, root=0)
+        hp_pairs_dd = comm.gather(hp_pairs_dd, root=0)
+        deltasigma = comm.gather(deltasigma, root=0)
+        len_ptcls = comm.gather(len_ptcls, root=0)
+        len_ptcls_subv = comm.gather(len_ptcls_subv, root=0)
+
         if rank == 0:
             ptcl_array = np.array([pp_pairs_dd, hp_pairs_dd, \
                 len_ptcls, len_ptcls_subv, \
