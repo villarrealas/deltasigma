@@ -4,9 +4,9 @@ setupinfo:
     #rbin_loghigh: 2
     rbin_loghigh: 2
     n_rbins: 20
-    nx: 3
-    ny: 3
-    nz: 3
+    nx: 2
+    ny: 2
+    nz: 2
     lbox: 2100
 
 analysiscuts:

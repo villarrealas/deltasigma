@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --time=48:00:00
-#SBATCH --nodes=27
+#SBATCH --nodes=8
 #SBATCH --tasks-per-node=1
 #SBATCH --job-name=paircounts
-#SBATCH --output=M002-midsubsample-%j.out
+#SBATCH --output=M010-midsubsample-%j.out
 
 cd /homes/avillarreal/repositories/deltasigma
 source /homes/avillarreal/miniconda3/bin/activate chopper_calc
